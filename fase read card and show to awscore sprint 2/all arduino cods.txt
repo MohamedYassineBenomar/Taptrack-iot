@@ -1,0 +1,68 @@
+1 - that code keep reading cards
+
+	#include <SPI.h>
+#include <MFRC522.h>
+
+#define SS_PIN  5
+#define RST_PIN 22   // safer pin than GPIO0
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) delay(10);
+
+  SPI.begin();  // default VSPI pins: SCK=18, MISO=19, MOSI=23, SS=5
+  rfid.PCD_Init();
+  delay(50);
+  Serial.println("RC522 ready. Bring your card close...");
+}
+
+void loop() {
+  if (!rfid.PICC_IsNewCardPresent()) return;
+  if (!rfid.PICC_ReadCardSerial())  return;
+
+  Serial.print("Card UID: ");
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    Serial.print(rfid.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(rfid.uid.uidByte[i], HEX);
+  }
+  Serial.println();
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+}
+
+2 - 
+
+ wifi connection succesfully
+
+#include <WiFi.h>
+
+// ⚙️ Change these to your Wi-Fi credentials
+const char* ssid = "POCOX3";
+const char* password = "fad5be544120";
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Connecting to WiFi...");
+  
+  WiFi.begin(ssid, password);
+
+  // Wait until connected
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n✅ WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  // nothing here for now
+}
+
+
+3 - 
