@@ -1,0 +1,401 @@
+IoT Attendance System – Technical Documentation
+1. Overview
+
+This project implements an IoT-based attendance system using:
+
+An ESP32 (or Arduino) with an RFID reader to scan cards.
+
+AWS IoT Core as a secure MQTT broker.
+
+An AWS EC2 instance running a Python client.
+
+A MariaDB/MySQL database to store attendance events.
+
+Flow idea:
+
+A user scans an RFID card.
+
+The ESP32 publishes a JSON message to AWS IoT Core.
+
+A Python script on EC2 listens to this MQTT topic.
+
+The script looks up which user owns that card (by UID) in the database.
+
+If the user exists, the script stores a new fixatge (clock-in) record with date and time.
+
+2. Architecture Overview
+2.1 High-level architecture
+[RFID Card] → [ESP32] → MQTT → [AWS IoT Core] → [Python Client on EC2] → [MariaDB Database]
+
+2.2 Data flow
+
+User presents card to the ESP32 reader.
+
+ESP32 reads the card UID and publishes a JSON message via MQTT to AWS IoT Core.
+
+AWS IoT Core forwards the message to any clients subscribed to the topic.
+
+A Python client running on an EC2 instance receives the message.
+
+The client parses the JSON (card UID, device name, etc.).
+
+The client connects to the local MariaDB database.
+
+It finds the user whose card UID matches the scanned value.
+
+It inserts a new row in the fixatge table, logging that user’s check-in.
+
+3. AWS IoT Setup
+3.1 Creating the ESP32 Thing
+
+In AWS IoT Core → Manage → Things:
+
+We created a Thing for the ESP32 device, e.g. espnode01.
+
+We generated and downloaded:
+
+Device certificate
+
+Private key
+
+Amazon Root CA (e.g. AmazonRootCA1.pem)
+
+We created/attached an IoT policy that allows:
+
+iot:Connect
+
+iot:Publish
+
+iot:Subscribe
+
+iot:Receive
+
+This policy is allowed on all resources (*) to simplify the project.
+
+3.2 Creating the EC2 client Thing
+
+We repeated the process for a second Thing, representing the server client, e.g. serverClient01:
+
+Generated a new certificate and key pair for the EC2 MQTT client.
+
+Attached the same IoT policy so it can connect and subscribe to topics.
+
+3.3 MQTT topic and payload
+
+The ESP32 publishes to the topic:
+
+iticbcn/espnode01/pub
+
+
+The payload is JSON, for example:
+
+{
+  "device": "espnode01",
+  "uid": "F4D44F06",
+  "ts": 987736
+}
+
+
+device → reader name / device ID.
+
+uid → RFID card UID.
+
+ts → timestamp or counter (from the ESP32).
+
+4. EC2 Instance and Python Client
+4.1 EC2 setup
+
+We created an EC2 instance:
+
+Region: us-east-1
+
+AMI: Amazon Linux 2023
+
+Type: t2.micro
+
+Key pair: ec2-iot-key.pem
+
+Security group: allows SSH (port 22) from the developer machine.
+
+We connect from the local machine via:
+
+ssh -i ~/Downloads/ec2-iot-key.pem ec2-user@PUBLIC_IP
+
+4.2 Project folder structure on EC2
+
+On the EC2 instance, we created:
+
+~/aws-iot-client/
+    ├── client.py
+    ├── .venv/                 (Python virtual environment)
+    └── certs/
+         ├── AmazonRootCA1.pem
+         ├── device-cert.pem   (cert for EC2 client Thing)
+         └── private-key.pem   (private key for EC2 client Thing)
+
+4.3 Python environment
+
+In ~/aws-iot-client:
+
+sudo dnf install -y python3 python3-pip
+python3 -m venv .venv
+source .venv/bin/activate
+pip install paho-mqtt mysql-connector-python
+
+4.4 Python client responsibilities
+
+The client.py script:
+
+Uses paho-mqtt to connect to the AWS IoT MQTT endpoint using TLS (certificate + key + Root CA).
+
+Subscribes to the topic:
+
+iticbcn/espnode01/pub
+
+
+For each incoming message:
+
+Decodes the JSON payload.
+
+Extracts uid (card UID) and device.
+
+Uses mysql-connector-python to connect to the MariaDB database.
+
+Looks up the usuari table to find a user whose targeta field equals the card UID.
+
+If a match is found, it inserts a new row into the fixatge table with:
+
+id_usuari
+
+id_dispositiu (device ID associated with that reader)
+
+current date (CURDATE())
+
+current time (CURTIME())
+
+If no user is found for that UID, it prints a message and does not insert into the database.
+
+5. Database (MariaDB/MySQL) Design and Setup
+5.1 MariaDB installation
+
+On the EC2 instance:
+
+sudo dnf install -y mariadb105-server   # or mariadb-server
+sudo systemctl enable --now mariadb
+sudo mysql_secure_installation
+
+
+In mysql_secure_installation, we:
+
+Set the root password.
+
+Removed anonymous users.
+
+Disabled remote root login.
+
+Removed test DB.
+
+Reloaded privileges.
+
+5.2 Creating the database and tables
+
+We created a database:
+
+CREATE DATABASE IF NOT EXISTS control_assistencia;
+USE control_assistencia;
+
+
+We created the key tables:
+
+usuari – users (with card UID in targeta)
+
+assignatura – subjects
+
+ubicacio – locations/classrooms
+
+dispositiu – devices/readers linked to ubicacio
+
+assistir – attendance per user/subject/location (for future logic)
+
+fixatge – raw clock-in events
+
+Especially important for integration are:
+
+CREATE TABLE usuari (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dni VARCHAR(20) UNIQUE NOT NULL,
+    nom_complet VARCHAR(100) NOT NULL,
+    correu VARCHAR(100),
+    telefon VARCHAR(20),
+    targeta VARCHAR(50),
+    rol ENUM('professor', 'alumne', 'personal_servei')
+);
+
+CREATE TABLE dispositiu (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_ubicacio INT UNIQUE,
+    FOREIGN KEY (id_ubicacio) REFERENCES ubicacio(id)
+);
+
+CREATE TABLE fixatge (
+    id_usuari INT NOT NULL,
+    id_dispositiu INT NOT NULL,
+    data DATE NOT NULL,
+    hora TIME NOT NULL,
+    FOREIGN KEY (id_usuari) REFERENCES usuari(id),
+    FOREIGN KEY (id_dispositiu) REFERENCES dispositiu(id)
+);
+
+5.3 Database user for the Python client
+
+We created a DB user:
+
+CREATE USER 'assist_admin'@'localhost' IDENTIFIED BY 'Assistencia123!';
+GRANT ALL PRIVILEGES ON control_assistencia.* TO 'assist_admin'@'localhost';
+FLUSH PRIVILEGES;
+
+
+The Python client uses this account to connect to the DB.
+
+5.4 Sample data mapping card UID to user
+
+We inserted at least:
+
+One user with a known card UID.
+
+One location and one device.
+
+Example:
+
+USE control_assistencia;
+
+INSERT INTO usuari (dni, nom_complet, correu, telefon, targeta, rol)
+VALUES ('12345678A', 'Usuari Prova', 'prova@example.com', '600000000', 'F4D44F06', 'alumne');
+
+INSERT INTO ubicacio (id, classe, planta)
+VALUES (1, 'Aula 101', 'Planta 1');
+
+INSERT INTO dispositiu (id_ubicacio) VALUES (1);  -- this creates dispositiu.id = 1
+
+
+The card UID from MQTT messages (e.g. F4D44F06) is stored in usuari.targeta.
+The device (espnode01) is represented by dispositiu.id = 1 (we used DEVICE_ID = 1 in the script).
+
+6. System Behavior
+6.1 When a known card is scanned (UID exists in usuari.targeta)
+
+ESP32 sends:
+
+{"device":"espnode01","uid":"F4D44F06","ts":987736}
+
+
+Python client receives the message from AWS IoT.
+
+It runs:
+
+SELECT id FROM usuari WHERE targeta = 'F4D44F06';
+
+
+Suppose it finds id_usuari = 1.
+
+It inserts into fixatge:
+
+INSERT INTO fixatge (id_usuari, id_dispositiu, data, hora)
+VALUES (1, 1, CURDATE(), CURTIME());
+
+
+Result: a new attendance event is stored for that user.
+
+6.2 When the same user scans multiple times
+
+Each scan inserts another row in fixatge:
+
+id_usuari	id_dispositiu	data	hora
+1	1	2025-11-26	09:15:23
+1	1	2025-11-26	09:30:05
+1	1	2025-11-26	12:02:11
+
+This gives a full history of card usage. Later logic can interpret:
+
+First scan of the day → entry
+
+Last scan of the day → exit
+
+Others → breaks or just extra info
+
+6.3 When a brand-new/unknown card is scanned
+
+If the card UID is not present in usuari.targeta:
+
+SELECT id FROM usuari WHERE targeta = 'UNKNOWN_UID'; returns no rows.
+
+The Python client prints a message like:
+
+No user found for card UID UNKNOWN_UID, skipping insert
+
+
+No row is inserted in fixatge.
+
+An administrator can then:
+
+Create a new user in usuari with targeta = 'UNKNOWN_UID'.
+
+Future scans of that card will start generating fixatge rows.
+
+7. Flowchart (for your report)
+
+You can draw this with boxes and arrows in your PDF/doc:
+
+Title: “End-to-end flow”
+
+User scans card
+↓
+
+ESP32 reads UID and creates JSON
+{"device": "espnode01", "uid": "...", "ts": ...}
+↓
+
+ESP32 publishes JSON via MQTT to AWS IoT Core
+Topic: iticbcn/espnode01/pub
+↓
+
+AWS IoT Core (MQTT broker)
+Routes message to subscribers
+↓
+
+Python MQTT client on EC2
+
+Receives message
+
+Parses JSON
+↓
+
+MariaDB (control_assistencia)
+
+Find user in usuari by targeta = uid
+
+If found → insert into fixatge
+
+If not found → log “unknown card”, do nothing
+
+You can easily draw this in Word/PowerPoint/Draw.io as:
+
+6 boxes connected with arrows, matching the steps above.
+
+8. How to run the system (short cheat sheet)
+
+ESP32 side: Power on the ESP32 so it connects to WiFi and AWS IoT and starts publishing RFID scans.
+
+EC2 side (on your laptop):
+
+ssh -i ~/Downloads/ec2-iot-key.pem ec2-user@YOUR_PUBLIC_IP
+cd ~/aws-iot-client
+source .venv/bin/activate
+python3 client.py
+
+
+Database checks (on EC2):
+
+sudo mysql -u root -p
+USE control_assistencia;
+SELECT * FROM fixatge;
