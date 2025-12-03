@@ -1,0 +1,25 @@
+   ┌──────────────────┐           MQTT (JSON)            ┌──────────────────┐
+   │                  │  publish / subscribe on topic   │                  │
+   │    Arduino       │  ─────────────────────────────▶ │   AWS IoT Core   │
+   │  (MQTT client)   │ ◀────────────────────────────── │   (MQTT broker)  │
+   │                  │                                 │                  │
+   └──────────────────┘                                 └──────────────────┘
+                                                                 ▲
+                                                                 │
+                                                                 │ MQTT (JSON)
+                                                                 │ publish / subscribe
+                                                                 │ on the SAME topic
+                                                         ┌──────────────────┐
+                                                         │   EC2 Instance   │
+                                                         │  (Linux server)  │
+                                                         │  ┌────────────┐  │
+                                                         │  │  Python    │  │
+                                                         │  │            │  │
+                                                         │  │ Client     │  │
+                                                         │  └────────────┘  │
+                                                         │  ┌────────────┐  │
+                                                         │  │  MySQL DB  │  │
+                                                         │  │ (stores    │  │
+                                                         │  │       data)│  │
+                                                         │  └────────────┘  │
+                                                         └──────────────────┘
