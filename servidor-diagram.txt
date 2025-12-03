@@ -10,7 +10,7 @@
                                                                  │ publish / subscribe
                                                                  │ on the SAME topic
                                                          ┌──────────────────┐
-                                                         │   EC2 Instance   │
+                                                         │   aws server     │
                                                          │  (Linux server)  │
                                                          │  ┌────────────┐  │
                                                          │  │  Python    │  │
