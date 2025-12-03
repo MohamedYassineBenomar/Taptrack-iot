@@ -1,3 +1,4 @@
+// mostrar datos en la intefície serial
 #include "AWS-IoT.h"
 #include "secrets.h"
 
