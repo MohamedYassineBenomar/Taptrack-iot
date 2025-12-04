@@ -1,3 +1,4 @@
+// mostrar datos en la intefície serial
 #include "AWS-IoT.h"
 #include "secrets.h"
 
@@ -27,12 +28,12 @@ static void setClock() {
   delay(2000); // <-- Add this extra wait
 }
 
+
 static void messageHandler(String &topic, String &payload) {
   Serial.println("📩 Incoming from AWS:");
   Serial.print("  Topic: ");   Serial.println(topic);
   Serial.print("  Payload: "); Serial.println(payload);
 }
-
 
 void SetupAWS() {
   net.setCACert(AWS_CERT_CA);
@@ -46,13 +47,12 @@ void SetupAWS() {
 
   Serial.println("AWS IoT initialized.");
 }
+
 static void mqttConnect() {
   Serial.print("🔐 Connecting TLS+MQTT to AWS...");
   if (client.connect(THINGNAME)) {
     Serial.println(" connected ✅");
-    client.subscribe(AWS_IOT_SUBSCRIBE_TOPIC);   // <-- MUST be here
-    client.subscribe(AWS_IOT_PUBLISH_TOPIC);   // ← add this line
-
+    client.subscribe(AWS_IOT_SUBSCRIBE_TOPIC);
     AWSConnected = true;
   } else {
     Serial.print(" failed (state=");
@@ -61,8 +61,6 @@ static void mqttConnect() {
     AWSConnected = false;
   }
 }
-
-
 
 void CheckAWS() {
   if (!client.connected()) {
@@ -92,3 +90,4 @@ void PublicaTag(const String& tagID) {
     Serial.println("⚠️  Publish failed");
   }
 }
+

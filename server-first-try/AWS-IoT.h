@@ -1,16 +1,14 @@
 #pragma once
 #include <Arduino.h>
-#define AWS_IOT_SUBSCRIBE_TOPIC "iticbcn/espnode01/sub"   // FROM AWS → to device
-#define AWS_IOT_PUBLISH_TOPIC   "iticbcn/espnode01/pub"   // FROM device → to AWS
 
 extern bool AWSConnected;
 
 void SetupAWS();
 void CheckAWS();
 void PublicaTag(const String& tagID);
-void PublicaText(const char* topic, const char* msg);
 
 // Topics (don’t start with /)
 #define THINGNAME "espnode01"
 #define AWS_IOT_SUBSCRIBE_TOPIC "iticbcn/espnode01/sub"
 #define AWS_IOT_PUBLISH_TOPIC   "iticbcn/espnode01/pub"
+
